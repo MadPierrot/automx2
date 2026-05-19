@@ -1,0 +1,5 @@
+# automx2 è installato via pip e porta tutte le sue dipendenze
+# Questo file mantiene solo dipendenze aggiuntive non coperte da automx2
+
+# Database driver per MariaDB
+PyMySQL==1.1.0

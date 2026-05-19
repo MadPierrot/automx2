@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:11.0
+    container_name: automx2-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root_password
+      MARIADB_DATABASE: ${MYSQL_DATABASE:-automx2}
+      MARIADB_USER: ${MYSQL_USER:-automx2}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:-automx2_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
+      timeout: 3s
+      retries: 10
+      interval: 10s
+    networks:
+      - automx2-network
+
+  automx2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: automx2-app
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST:-mariadb}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-automx2}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-automx2_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-automx2}
+      MYSQL_CHARSET: ${MYSQL_CHARSET:-utf8mb4}
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-4243}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      AUTOMX2_CONF: /app/automx2.conf
+    ports:
+      - "4243:4243"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./automx2.conf:/app/automx2.conf
+    networks:
+      - automx2-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4243/"]
+      timeout: 5s
+      retries: 5
+      interval: 10s
+
+volumes:
+  mariadb_data:
+
+networks:
+  automx2-network:
+    driver: bridge
