@@ -58,5 +58,52 @@ with app.app_context():
     print("Database initialized successfully")
 PYEOF
 
-# Avvia Flask
-exec flask run --host=${APP_HOST} --port=${APP_PORT}
+# ──────────────────────────────────────────────
+# Gestione graceful shutdown (SIGTERM da K8s)
+# ──────────────────────────────────────────────
+
+FLASK_PID=""
+
+graceful_shutdown() {
+  echo "[entrypoint] SIGTERM ricevuto - avvio graceful shutdown..."
+
+  if [ -n "$FLASK_PID" ] && kill -0 "$FLASK_PID" 2>/dev/null; then
+    echo "[entrypoint] Invio SIGTERM a Flask (PID: $FLASK_PID)..."
+    kill -SIGTERM "$FLASK_PID"
+
+    # Attendi fino a 30s che Flask termini
+    WAIT=0
+    while kill -0 "$FLASK_PID" 2>/dev/null; do
+      if [ $WAIT -ge 30 ]; then
+        echo "[entrypoint] Timeout raggiunto - invio SIGKILL a Flask..."
+        kill -SIGKILL "$FLASK_PID"
+        break
+      fi
+      sleep 1
+      WAIT=$((WAIT + 1))
+    done
+
+    echo "[entrypoint] Flask terminato."
+  fi
+
+  echo "[entrypoint] Shutdown completato."
+  exit 0
+}
+
+# Registra il trap per SIGTERM e SIGINT
+trap graceful_shutdown SIGTERM SIGINT
+
+# ──────────────────────────────────────────────
+# Avvia Flask in background e salva il PID
+# ──────────────────────────────────────────────
+echo "[entrypoint] Avvio Flask..."
+flask run --host=${APP_HOST} --port=${APP_PORT} &
+FLASK_PID=$!
+echo "[entrypoint] Flask avviato con PID: $FLASK_PID"
+
+# Attendi il processo Flask (il wait è interrompibile dai trap)
+wait "$FLASK_PID"
+EXIT_CODE=$?
+
+echo "[entrypoint] Flask uscito con codice: $EXIT_CODE"
+exit $EXIT_CODE
